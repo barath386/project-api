@@ -1,136 +1,100 @@
 <?php
+class AuthController {
 
-/**
- * Authentication Controller
- * Handles user registration, login, and profile
- */
+    public function register() {
+        $data=$GLOBALS['request_data'];
 
-class AuthController
-{
-    /**
-     * POST /api/register
-     * Register a new user
-     */
-    public function register(): void
-    {
-        $data = $_REQUEST['body'] ?? [];
-
-        /* ===============================
-           VALIDATION
-        =============================== */
-        if (empty($data['name'])) {
-            Response::validationError(['name' => 'Name is required']);
+        if(empty($data['email'])||empty($data['password'])){
+            Response::json(["error"=>"Email & password required"],400);
+            return;
         }
 
-        if (empty($data['email'])) {
-            Response::validationError(['email' => 'Email is required']);
+        $userModel=new User();
+        $hashed=password_hash($data['password'],PASSWORD_DEFAULT);
+
+        try{
+            $userModel->create($data['name'],$data['email'],$hashed);
+            Response::json(["message"=>"User created"],201);
+        }catch(Exception $e){
+            Response::json(["error"=>"Email exists"],409);
         }
-
-        if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-            Response::validationError(['email' => 'Invalid email format']);
-        }
-
-        if (empty($data['password'])) {
-            Response::validationError(['password' => 'Password is required']);
-        }
-
-        if (strlen($data['password']) < 6) {
-            Response::validationError(['password' => 'Password must be at least 6 characters']);
-        }
-
-        /* ===============================
-           CHECK DUPLICATE EMAIL
-        =============================== */
-        if (User::findByEmail($data['email'])) {
-            Response::error('Email already registered', 409);
-        }
-
-        /* ===============================
-           CREATE USER
-        =============================== */
-        $created = User::create([
-            $data['name'],
-            $data['email'],
-            password_hash($data['password'], PASSWORD_DEFAULT)
-        ]);
-
-        if (!$created) {
-            Response::error('Failed to register user', 500);
-        }
-
-        Response::success('User registered successfully');
     }
 
-    /**
-     * POST /api/login
-     * Authenticate user & return JWT
-     */
-    public function login(): void
-    {
-        $data = $_REQUEST['body'] ?? [];
+public function login() {
+    $data = $GLOBALS['request_data'];
 
-        /* ===============================
-           VALIDATION
-        =============================== */
-        if (empty($data['email']) || empty($data['password'])) {
-            Response::validationError([
-                'email' => 'Email is required',
-                'password' => 'Password is required'
-            ]);
-        }
-
-        /* ===============================
-           FIND USER
-        =============================== */
-        $user = User::findByEmail($data['email']);
-
-        if (!$user || !User::verifyPassword($data['password'], $user['password'])) {
-            Response::unauthorized('Invalid credentials');
-        }
-
-        /* ===============================
-           GENERATE JWT
-        =============================== */
-        $token = JWT::generate([
-            'user_id' => $user['id'],
-            'email'   => $user['email'],
-            'name'    => $user['name']
-        ]);
-
-        Response::success('Login successful', [
-            'token'       => $token,
-            'token_type'  => 'Bearer',
-            'expires_in'  => JWT_EXPIRY,
-            'user' => [
-                'id'    => $user['id'],
-                'name'  => $user['name'],
-                'email' => $user['email']
-            ]
-        ]);
+    if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        Response::json(["error" => "Invalid email format"], 400);
+        return;
     }
 
-    /**
-     * GET /api/me
-     * Get authenticated user profile (JWT Protected)
-     */
-    public function me(): void
-    {
-        $authUser = $_REQUEST['user'] ?? null;
+    $userModel = new User();
+    $user = $userModel->findByEmail($data['email']);
 
-        if (!$authUser) {
-            Response::unauthorized();
-        }
-
-        $user = User::findById($authUser['user_id']);
-
-        if (!$user) {
-            Response::notFound('User not found');
-        }
-
-        Response::success('User profile', [
-            'id'    => $user['id'],
-            'name'  => $user['name'],
-            'email' => $user['email']
-        ]);
+    if (!$user || !password_verify($data['password'], $user['password'])) {
+        Response::json(['error' => 'Invalid email or password'], 401);
+        return;
     }
+
+    
+    $accessToken = JWT::generateAccessToken([
+        'user_id' => $user['id'],
+        'email' => $user['email']
+    ]);
+
+    $refreshToken = JWT::generateRefreshToken([
+        'user_id' => $user['id'],
+        'email' => $user['email']
+    ]);
+
+    
+    $userModel->storeRefreshToken($user['id'], $refreshToken);
+
+  
+    setcookie(
+        "refreshToken",                 
+        $refreshToken,                   
+        time() + REFRESH_TOKEN_EXP,     
+        "/",                             
+        "",                              
+        false,  
+        true    
+    );
+
+    Response::json([
+        "access_token" => $accessToken,
+        "access_expires_in" => ACCESS_TOKEN_EXP
+    ]);
+}
+
+
+ public function refresh() {
+
+    $refreshToken = $_COOKIE['refreshToken'] ?? null;
+
+    if (!$refreshToken) {
+        Response::json(["error"=>"No refresh token"],401);
+        return;
+    }
+
+    $decoded = JWT::validate($refreshToken,"refresh");
+
+    if(!$decoded){
+        Response::json(["error"=>"Invalid refresh token"],401);
+        return;
+    }
+
+    $payload=[
+        "user_id"=>$decoded['user_id'],
+        "email"=>$decoded['email']
+    ];
+
+    $newAccess = JWT::generateAccessToken($payload);
+
+    Response::json([
+        "access_token"=>$newAccess,
+        "expires_in"=>ACCESS_TOKEN_EXP
+    ]);
+}
+
 }

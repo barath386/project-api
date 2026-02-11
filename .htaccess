@@ -1,9 +1,4 @@
 RewriteEngine On
-
-# If project is inside a folder (project-api)
-RewriteBase /project-api/
-
-# Send all requests to public/index.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ public/index.php [L,QSA]
+RewriteRule ^(.*)$ public/index.php [QSA,L]

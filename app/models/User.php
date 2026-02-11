@@ -1,64 +1,37 @@
 <?php
+class User {
+    private $db;
 
-/**
- * User Model
- * Handles database operations related to users
- */
-
-class User
-{
-    /**
-     * Get database connection
-     */
-    private static function db(): PDO
-    {
-        return Database::connect();
+    public function __construct() {
+        $this->db = Database::getInstance();
     }
 
-    /**
-     * Find user by email
-     */
-    public static function findByEmail(string $email): array|false
-    {
-        $sql = "SELECT * FROM users WHERE email = :email LIMIT 1";
-        $stmt = self::db()->prepare($sql);
-        $stmt->execute(['email' => $email]);
+    
+    public function updateRefreshToken($userId, $token) {
+        $stmt = $this->db->prepare("UPDATE users SET refresh_token = ? WHERE id = ?");
+        return $stmt->execute([$token, $userId]);
+    }
+public function storeRefreshToken($userId, $refreshToken) {
+    $stmt = $this->db->prepare("UPDATE users SET refresh_token=? WHERE id=?");
+    return $stmt->execute([$refreshToken, $userId]);
+}
+
+    
+    public function findByRefreshToken($token) {
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE refresh_token = ? LIMIT 1");
+        $stmt->execute([$token]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    /**
-     * Find user by ID
-     */
-    public static function findById(int $id): array|false
-    {
-        $sql = "SELECT id, name, email, created_at FROM users WHERE id = :id LIMIT 1";
-        $stmt = self::db()->prepare($sql);
-        $stmt->execute(['id' => $id]);
+   
+    public function create($name, $email, $password) {
+        $stmt = $this->db->prepare("INSERT INTO users (name, email, password) VALUES (?, ?, ?)");
+        return $stmt->execute([$name, $email, $password]);
+    }
+
+    public function findByEmail($email) {
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE email = ?");
+        $stmt->execute([$email]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Create new user
-     */
-    public static function create(array $data): bool
-    {
-        $sql = "INSERT INTO users (name, email, password, created_at)
-                VALUES (:name, :email, :password, NOW())";
-
-        $stmt = self::db()->prepare($sql);
-
-        return $stmt->execute([
-            'name'     => $data[0],
-            'email'    => $data[1],
-            'password' => $data[2]
-        ]);
-    }
-
-    /**
-     * Verify password
-     */
-    public static function verifyPassword(string $plainPassword, string $hashedPassword): bool
-    {
-        return password_verify($plainPassword, $hashedPassword);
     }
 }
