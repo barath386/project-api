@@ -1,23 +1,57 @@
 <?php
-class AuthMiddleware {
 
-    public static function handle() {
-        $headers=getallheaders();
-        $auth=$headers['Authorization']??$headers['authorization']??null;
+declare(strict_types=1);
 
-        if(!$auth || !preg_match('/Bearer\s(\S+)/',$auth,$m)){
-            Response::json(["error"=>"Token missing"],401);
-            exit;
+/**
+ * --------------------------------------------------
+ * Authentication Middleware
+ * --------------------------------------------------
+ * - Validates JWT access token
+ * - Extracts authenticated user data
+ * - Blocks unauthorized requests
+ */
+
+class AuthMiddleware
+{
+    /**
+     * Handle JWT authentication
+     */
+    public static function handle(): array
+    {
+        $headers = getallheaders();
+        $authorizationHeader =
+            $headers['Authorization']
+            ?? $headers['authorization']
+            ?? null;
+
+        // Validate Authorization header
+        if (!$authorizationHeader) {
+            Response::json(
+                ['status' => false, 'message' => 'Authorization token missing'],
+                401
+            );
         }
 
-        $token=$m[1];
-        $user=JWT::validate($token,"access");
-
-        if(!$user){
-            Response::json(["error"=>"Access token expired or invalid"],401);
-            exit;
+        // Extract Bearer token
+        if (!preg_match('/Bearer\s+(\S+)/', $authorizationHeader, $matches)) {
+            Response::json(
+                ['status' => false, 'message' => 'Invalid authorization format'],
+                401
+            );
         }
 
-        return $user;
+        $accessToken = $matches[1];
+
+        // Validate JWT access token
+        $userPayload = JWT::validate($accessToken, 'access');
+
+        if (!$userPayload) {
+            Response::json(
+                ['status' => false, 'message' => 'Access token expired or invalid'],
+                401
+            );
+        }
+
+        return $userPayload;
     }
 }

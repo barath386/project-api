@@ -1,100 +1,174 @@
 <?php
-class AuthController {
 
-    public function register() {
-        $data=$GLOBALS['request_data'];
+declare(strict_types=1);
 
-        if(empty($data['email'])||empty($data['password'])){
-            Response::json(["error"=>"Email & password required"],400);
-            return;
+/**
+ * --------------------------------------------------
+ * Authentication Controller
+ * --------------------------------------------------
+ * Handles user registration, login, and token refresh
+ */
+
+class AuthController
+{
+    private User $userModel;
+
+    public function __construct()
+    {
+        $this->userModel = new User();
+    }
+
+    /* --------------------------------------------------
+     | POST /api/register
+     |-------------------------------------------------- */
+    public function register(): void
+    {
+        $data = $GLOBALS['request_data'] ?? [];
+
+        if (empty($data['email']) || empty($data['password'])) {
+            Response::json(
+                ['status' => false, 'message' => 'Email and password are required'],
+                400
+            );
         }
 
-        $userModel=new User();
-        $hashed=password_hash($data['password'],PASSWORD_DEFAULT);
+        if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            Response::json(
+                ['status' => false, 'message' => 'Invalid email format'],
+                400
+            );
+        }
 
-        try{
-            $userModel->create($data['name'],$data['email'],$hashed);
-            Response::json(["message"=>"User created"],201);
-        }catch(Exception $e){
-            Response::json(["error"=>"Email exists"],409);
+        $hashedPassword = password_hash(
+            $data['password'],
+            PASSWORD_DEFAULT
+        );
+
+        try {
+            $this->userModel->create(
+                $data['name'] ?? '',
+                $data['email'],
+                $hashedPassword
+            );
+
+            Response::json(
+                ['status' => true, 'message' => 'User registered successfully'],
+                201
+            );
+
+        } catch (Exception $e) {
+            Response::json(
+                ['status' => false, 'message' => 'Email already exists'],
+                409
+            );
         }
     }
 
-public function login() {
-    $data = $GLOBALS['request_data'];
+    /* --------------------------------------------------
+     | POST /api/login
+     |-------------------------------------------------- */
+    public function login(): void
+    {
+        $data = $GLOBALS['request_data'] ?? [];
 
-    if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-        Response::json(["error" => "Invalid email format"], 400);
-        return;
+        if (
+            empty($data['email']) ||
+            empty($data['password'])
+        ) {
+            Response::json(
+                ['status' => false, 'message' => 'Email and password are required'],
+                400
+            );
+        }
+
+        if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            Response::json(
+                ['status' => false, 'message' => 'Invalid email format'],
+                400
+            );
+        }
+
+        $user = $this->userModel->findByEmail($data['email']);
+
+        if (
+            !$user ||
+            !password_verify($data['password'], $user['password'])
+        ) {
+            Response::json(
+                ['status' => false, 'message' => 'Invalid email or password'],
+                401
+            );
+        }
+
+        // Generate tokens
+        $payload = [
+            'user_id' => $user['id'],
+            'email'   => $user['email'],
+        ];
+
+        $accessToken  = JWT::generateAccessToken($payload);
+        $refreshToken = JWT::generateRefreshToken($payload);
+
+        // Store refresh token in DB
+        $this->userModel->updateRefreshToken(
+            (int) $user['id'],
+            $refreshToken
+        );
+
+        // Set refresh token as HttpOnly cookie
+        setcookie(
+            'refreshToken',
+            $refreshToken,
+            [
+                'expires'  => time() + REFRESH_TOKEN_EXP,
+                'path'     => '/',
+                'secure'   => false, // true in HTTPS
+                'httponly' => true,
+                'samesite' => 'Strict',
+            ]
+        );
+
+        Response::json([
+            'status'              => true,
+            'access_token'        => $accessToken,
+            'access_expires_in'   => ACCESS_TOKEN_EXP,
+        ]);
     }
 
-    $userModel = new User();
-    $user = $userModel->findByEmail($data['email']);
+    /* --------------------------------------------------
+     | POST /api/refresh
+     |-------------------------------------------------- */
+    public function refresh(): void
+    {
+        $refreshToken = $_COOKIE['refreshToken'] ?? null;
 
-    if (!$user || !password_verify($data['password'], $user['password'])) {
-        Response::json(['error' => 'Invalid email or password'], 401);
-        return;
+        if (!$refreshToken) {
+            Response::json(
+                ['status' => false, 'message' => 'Refresh token missing'],
+                401
+            );
+        }
+
+        $decoded = JWT::validate($refreshToken, 'refresh');
+
+        if (!$decoded) {
+            Response::json(
+                ['status' => false, 'message' => 'Invalid or expired refresh token'],
+                401
+            );
+        }
+
+        $payload = [
+            'user_id' => $decoded['user_id'],
+            'email'   => $decoded['email'],
+        ];
+
+        $newAccessToken = JWT::generateAccessToken($payload);
+
+        Response::json([
+            'status'            => true,
+            'access_token'      => $newAccessToken,
+            'access_expires_in' => ACCESS_TOKEN_EXP,
+        ]);
     }
-
-    
-    $accessToken = JWT::generateAccessToken([
-        'user_id' => $user['id'],
-        'email' => $user['email']
-    ]);
-
-    $refreshToken = JWT::generateRefreshToken([
-        'user_id' => $user['id'],
-        'email' => $user['email']
-    ]);
-
-    
-    $userModel->storeRefreshToken($user['id'], $refreshToken);
-
-  
-    setcookie(
-        "refreshToken",                 
-        $refreshToken,                   
-        time() + REFRESH_TOKEN_EXP,     
-        "/",                             
-        "",                              
-        false,  
-        true    
-    );
-
-    Response::json([
-        "access_token" => $accessToken,
-        "access_expires_in" => ACCESS_TOKEN_EXP
-    ]);
-}
-
-
- public function refresh() {
-
-    $refreshToken = $_COOKIE['refreshToken'] ?? null;
-
-    if (!$refreshToken) {
-        Response::json(["error"=>"No refresh token"],401);
-        return;
-    }
-
-    $decoded = JWT::validate($refreshToken,"refresh");
-
-    if(!$decoded){
-        Response::json(["error"=>"Invalid refresh token"],401);
-        return;
-    }
-
-    $payload=[
-        "user_id"=>$decoded['user_id'],
-        "email"=>$decoded['email']
-    ];
-
-    $newAccess = JWT::generateAccessToken($payload);
-
-    Response::json([
-        "access_token"=>$newAccess,
-        "expires_in"=>ACCESS_TOKEN_EXP
-    ]);
-}
-
 }

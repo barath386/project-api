@@ -1,63 +1,145 @@
 <?php
-class Patient {
-    private $db;
 
-    public function __construct() {
+declare(strict_types=1);
+
+/**
+ * --------------------------------------------------
+ * Patient Model
+ * --------------------------------------------------
+ * Handles all database operations related to patients
+ */
+
+class Patient
+{
+    private PDO $db;
+
+    /**
+     * Initialize database connection
+     */
+    public function __construct()
+    {
         $this->db = Database::getInstance();
     }
 
-    public function findById($id) {
-        $sql = "SELECT * FROM patients WHERE id = :id LIMIT 1";
+    /**
+     * Get patient by ID
+     */
+    public function findById(int $id): ?array
+    {
+        $sql = "SELECT *
+                FROM patients
+                WHERE id = :id
+                LIMIT 1";
+
         $stmt = $this->db->prepare($sql);
-        $stmt->execute(['id' => $id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt->execute([':id' => $id]);
+
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
-    public function create($name, $age, $gender, $contact, $address) {
-        $query = "INSERT INTO patients (name, age, gender, contact, address) VALUES (:name, :age, :gender, :contact, :address)";
-        $stmt = $this->db->prepare($query);
-        return $stmt->execute([
-            ':name' => $name,
-            ':age' => $age,
-            ':gender' => $gender,
-            ':contact' => $contact,
-            ':address' => $address
-        ]);
-    }
+    /**
+     * Create a new patient
+     */
+    public function create(
+        string $name,
+        int $age,
+        string $gender,
+        string $contact,
+        string $address
+    ): bool {
+        $sql = "INSERT INTO patients 
+                (name, age, gender, contact, address)
+                VALUES
+                (:name, :age, :gender, :contact, :address)";
 
-    public function update($id, $name, $age, $gender, $contact, $address) {
-        $query = "UPDATE patients SET name = :name, age = :age, gender = :gender, contact = :contact, address = :address WHERE id = :id";
-        $stmt = $this->db->prepare($query);
+        $stmt = $this->db->prepare($sql);
+
         return $stmt->execute([
-            ':name' => $name,
-            ':age' => $age,
-            ':gender' => $gender,
+            ':name'    => $name,
+            ':age'     => $age,
+            ':gender'  => $gender,
             ':contact' => $contact,
             ':address' => $address,
-            ':id' => $id
         ]);
     }
 
-    public function patchUpdate($id, $data) {
+    /**
+     * Update patient (PUT)
+     */
+    public function update(
+        int $id,
+        string $name,
+        int $age,
+        string $gender,
+        string $contact,
+        string $address
+    ): bool {
+        $sql = "UPDATE patients
+                SET name    = :name,
+                    age     = :age,
+                    gender  = :gender,
+                    contact = :contact,
+                    address = :address
+                WHERE id = :id";
+
+        $stmt = $this->db->prepare($sql);
+
+        return $stmt->execute([
+            ':id'      => $id,
+            ':name'    => $name,
+            ':age'     => $age,
+            ':gender'  => $gender,
+            ':contact' => $contact,
+            ':address' => $address,
+        ]);
+    }
+
+    /**
+     * Partial update (PATCH)
+     */
+    public function patchUpdate(int $id, array $data): bool
+    {
+        if (empty($data)) {
+            return false;
+        }
+
         $fields = [];
         $params = [':id' => $id];
-        foreach ($data as $key => $value) {
-            $fields[] = "$key = :$key";
-            $params[":$key"] = $value;
+
+        foreach ($data as $column => $value) {
+            $fields[] = "{$column} = :{$column}";
+            $params[":{$column}"] = $value;
         }
-        $sql = "UPDATE patients SET " . implode(', ', $fields) . " WHERE id = :id";
+
+        $sql = "UPDATE patients
+                SET " . implode(', ', $fields) . "
+                WHERE id = :id";
+
         $stmt = $this->db->prepare($sql);
+
         return $stmt->execute($params);
     }
 
-    public function delete($id) {
-        $query = "DELETE FROM patients WHERE id = :id";
-        $stmt = $this->db->prepare($query);
+    /**
+     * Delete patient
+     */
+    public function delete(int $id): bool
+    {
+        $sql = "DELETE FROM patients
+                WHERE id = :id";
+
+        $stmt = $this->db->prepare($sql);
+
         return $stmt->execute([':id' => $id]);
     }
 
-    public function getAll() {
+    /**
+     * Get all patients
+     */
+    public function getAll(): array
+    {
         $stmt = $this->db->query("SELECT * FROM patients");
+
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
