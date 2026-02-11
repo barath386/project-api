@@ -1,75 +1,61 @@
 <?php
 
+<?php
 declare(strict_types=1);
 
-/**
- * --------------------------------------------------
- * Application Entry Point
- * --------------------------------------------------
- * - Loads configuration
- * - Registers autoloader
- * - Executes global middleware
- * - Defines routes
- * - Resolves request
- */
-
-// --------------------------------------------------
-// Load global configuration
-// --------------------------------------------------
 require_once dirname(__DIR__) . '/config/config.php';
 
-// --------------------------------------------------
-// PSR-4 Style Autoloader (Custom)
-// --------------------------------------------------
-spl_autoload_register(function (string $class): void {
-
-    $basePath = dirname(__DIR__) . '/app/';
-
-    $directories = [
-        'controllers/',
-        'models/',
-        'helpers/',
-        'core/',
-        'middleware/',
-    ];
-
-    foreach ($directories as $directory) {
-        $filePath = $basePath . $directory . $class . '.php';
-
-        if (file_exists($filePath)) {
-            require_once $filePath;
+spl_autoload_register(function ($class) {
+    $basePath = dirname(__DIR__) . '/api/';
+    foreach (['middlewares/','controllers/','models/','helpers/','core/'] as $f) {
+        $file = $basePath . $f . $class . '.php';
+        if (file_exists($file)) {
+            require_once $file;
             return;
         }
     }
 });
 
-// --------------------------------------------------
-// Global Middleware (Runs for every request)
-// --------------------------------------------------
 JsonMiddleware::handle();
 
-// --------------------------------------------------
-// Initialize Router
-// --------------------------------------------------
+// continue router...
+
+
+
+// ==================================================
+// 3️⃣ DEBUG CHECK
+// ==================================================
+// if (!class_exists('JsonMiddleware')) {
+//     die('❌ JsonMiddleware NOT LOADED');
+// }
+
+// die('✅ JsonMiddleware LOADED SUCCESSFULLY');
+
+
+// ==================================================
+// 4️⃣ RUN GLOBAL MIDDLEWARE
+// ==================================================
+JsonMiddleware::handle();
+
+// ==================================================
+// 5️⃣ INIT ROUTER
+// ==================================================
 $router = new Router();
 
-// --------------------------------------------------
-// Authentication Routes (Public)
-// --------------------------------------------------
+// ==================================================
+// 6️⃣ ROUTES
+// ==================================================
 $router->post('/api/register', AuthController::class, 'register');
 $router->post('/api/login', AuthController::class, 'login');
 $router->post('/api/refresh', AuthController::class, 'refresh');
 
-// --------------------------------------------------
-// Patient Routes (Protected)
-// --------------------------------------------------
 $router->get('/api/patients', PatientController::class, 'index', true);
 $router->post('/api/patients', PatientController::class, 'create', true);
 $router->put('/api/patients', PatientController::class, 'update', true);
 $router->patch('/api/patients', PatientController::class, 'patch', true);
 $router->delete('/api/patients', PatientController::class, 'delete', true);
 
-// --------------------------------------------------
-// Resolve Incoming Request
-// --------------------------------------------------
+// ==================================================
+// 7️⃣ RESOLVE REQUEST
+// ==================================================
 $router->resolve();

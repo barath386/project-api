@@ -1,21 +1,13 @@
-# ==================================================
-# Apache Rewrite Configuration
-# Single Entry Point (Front Controller)
-# ==================================================
+RewriteEngine On
 
-<IfModule mod_rewrite.c>
+# -----------------------------
+# If project is inside folder
+# -----------------------------
+RewriteBase /project-api/
 
-    # Enable rewrite engine
-    RewriteEngine On
-
-    # Set base directory (uncomment & adjust if needed)
-    # RewriteBase /project-api/
-
-    # Skip existing files and directories
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-
-    # Route all requests to the front controller
-    RewriteRule ^ public/index.php [L,QSA]
-
-</IfModule>
+# -----------------------------
+# Send all requests to public/index.php
+# -----------------------------
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ public/index.php [L,QSA]

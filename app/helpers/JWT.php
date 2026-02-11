@@ -6,16 +6,17 @@ declare(strict_types=1);
  * --------------------------------------------------
  * JWT Helper (HS256)
  * --------------------------------------------------
- * - Generates access & refresh tokens
- * - Validates JWT tokens
- * - No external libraries
+ * ✔ Access Token & Refresh Token
+ * ✔ Manual JWT (no libraries)
+ * ✔ Secure signature validation
+ * ✔ Token expiry & type validation
  */
 
 class JWT
 {
-    /**
-     * Base64 URL-safe encoding
-     */
+    /* ---------------------------------------------
+     * Base64 URL Encode
+     * ------------------------------------------- */
     private static function base64UrlEncode(string $data): string
     {
         return rtrim(
@@ -24,9 +25,9 @@ class JWT
         );
     }
 
-    /**
-     * Base64 URL-safe decoding
-     */
+    /* ---------------------------------------------
+     * Base64 URL Decode
+     * ------------------------------------------- */
     private static function base64UrlDecode(string $data): string
     {
         return base64_decode(
@@ -34,9 +35,9 @@ class JWT
         );
     }
 
-    /**
-     * Generate HMAC SHA256 signature
-     */
+    /* ---------------------------------------------
+     * Generate Signature (HS256)
+     * ------------------------------------------- */
     private static function sign(string $header, string $payload): string
     {
         return self::base64UrlEncode(
@@ -49,9 +50,9 @@ class JWT
         );
     }
 
-    /**
+    /* ---------------------------------------------
      * Generate Access Token
-     */
+     * ------------------------------------------- */
     public static function generateAccessToken(array $user): string
     {
         return self::generateToken(
@@ -61,9 +62,9 @@ class JWT
         );
     }
 
-    /**
+    /* ---------------------------------------------
      * Generate Refresh Token
-     */
+     * ------------------------------------------- */
     public static function generateRefreshToken(array $user): string
     {
         return self::generateToken(
@@ -73,9 +74,9 @@ class JWT
         );
     }
 
-    /**
-     * Core token generator
-     */
+    /* ---------------------------------------------
+     * Core Token Generator
+     * ------------------------------------------- */
     private static function generateToken(
         array $user,
         string $type,
@@ -84,7 +85,7 @@ class JWT
         $header = self::base64UrlEncode(
             json_encode([
                 'typ' => 'JWT',
-                'alg' => 'HS256',
+                'alg' => 'HS256'
             ])
         );
 
@@ -94,7 +95,7 @@ class JWT
                 'email'   => $user['email'],
                 'type'    => $type,
                 'iat'     => time(),
-                'exp'     => time() + $ttl,
+                'exp'     => time() + $ttl
             ])
         );
 
@@ -103,26 +104,30 @@ class JWT
         return "{$header}.{$payload}.{$signature}";
     }
 
-    /**
-     * Validate JWT Token
-     */
+    /* ---------------------------------------------
+     * Validate Token
+     * ------------------------------------------- */
     public static function validate(
         string $token,
         string $expectedType = 'access'
     ): array|false {
         $parts = explode('.', $token);
 
+        // Must have 3 parts
         if (count($parts) !== 3) {
             return false;
         }
 
         [$header, $payload, $signature] = $parts;
 
-        // Verify signature
-        if (!hash_equals(self::sign($header, $payload), $signature)) {
+        // Signature verification
+        $validSignature = self::sign($header, $payload);
+
+        if (!hash_equals($validSignature, $signature)) {
             return false;
         }
 
+        // Decode payload
         $payloadData = json_decode(
             self::base64UrlDecode($payload),
             true
@@ -132,12 +137,12 @@ class JWT
             return false;
         }
 
-        // Validate token type
+        // Token type check
         if (($payloadData['type'] ?? '') !== $expectedType) {
             return false;
         }
 
-        // Validate expiration
+        // Expiry check
         if (($payloadData['exp'] ?? 0) < time()) {
             return false;
         }

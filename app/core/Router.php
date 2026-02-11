@@ -4,25 +4,21 @@ declare(strict_types=1);
 
 /**
  * --------------------------------------------------
- * Router
+ * Professional Router Class
  * --------------------------------------------------
- * - Registers routes by HTTP method
- * - Resolves incoming requests
- * - Supports protected routes (JWT middleware)
+ * Handles subfolder detection, Regex route matching, 
+ * and Middleware execution.
  */
-
 class Router
 {
     /**
-     * Registered routes
-     *
-     * @var array
+     * Stores all registered routes
      */
     private array $routes = [];
 
     /* --------------------------------------------------
-     | Route Registration Methods
-     |-------------------------------------------------- */
+     | Route Registration (Fluent Methods)
+     | -------------------------------------------------- */
 
     public function get(string $path, string $controller, string $method, bool $protected = false): void
     {
@@ -49,17 +45,11 @@ class Router
         $this->addRoute('DELETE', $path, $controller, $method, $protected);
     }
 
-    /**
-     * Internal route registrar
-     */
-    private function addRoute(
-        string $httpMethod,
-        string $path,
-        string $controller,
-        string $method,
-        bool $protected
-    ): void {
-        $this->routes[$httpMethod][$path] = [
+    private function addRoute(string $httpMethod, string $path, string $controller, string $method, bool $protected): void
+    {
+        $this->routes[] = [
+            'httpMethod' => $httpMethod,
+            'path'       => $path,
             'controller' => $controller,
             'method'     => $method,
             'protected'  => $protected,
@@ -67,66 +57,69 @@ class Router
     }
 
     /* --------------------------------------------------
-     | Request Resolver
-     |-------------------------------------------------- */
+     | Request Resolver Engine
+     | -------------------------------------------------- */
 
     public function resolve(): void
     {
-        $httpMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-        $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+        $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        $requestUri    = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 
-        // Normalize base path (project folder)
-        $path = str_replace(
-            ['/JWT-Authentication/public', '/JWT-Authentication'],
-            '',
-            $requestUri
-        );
+        // 1. AUTO-STRIP PROJECT FOLDER
+        // This detects '/project-api' or '/JWT-Authentication' automatically
+        $projectName = '/project-api'; 
+        
+        // If your folder name is different, you can add it to this array
+        $possibleFolders = [$projectName, '/JWT-Authentication', '/public'];
+        
+        $cleanUri = str_replace($possibleFolders, '', $requestUri);
+        $uri = '/' . trim($cleanUri, '/');
 
-        // Check route existence
-        if (!isset($this->routes[$httpMethod][$path])) {
-            Response::json(
-                ['status' => false, 'message' => 'Route not found', 'path' => $path],
-                404
-            );
+        // 2. SEARCH FOR MATCHING ROUTE
+        foreach ($this->routes as $route) {
+            // Convert {id} to a regex capture group ([a-zA-Z0-9_]+)
+            $pattern = "@^" . preg_replace('/\{[a-zA-Z0-9_]+\}/', '([a-zA-Z0-9_]+)', $route['path']) . "$@";
+
+            if ($route['httpMethod'] === $requestMethod && preg_match($pattern, $uri, $matches)) {
+                // Remove the first element (the full string match)
+                array_shift($matches);
+
+                // 3. EXECUTE MIDDLEWARE (AUTH)
+                if ($route['protected']) {
+                    // This sets AuthMiddleware::$currentUserId etc.
+                    $auth = new AuthMiddleware();
+                    $auth->handle(); 
+                }
+
+                $controllerName = $route['controller'];
+                $methodName     = $route['method'];
+
+                // 4. EXECUTE CONTROLLER
+                if (!class_exists($controllerName)) {
+                    Response::json(500, ["message" => "Controller {$controllerName} not found"]);
+                }
+
+                $controller = new $controllerName();
+
+                if (!method_exists($controller, $methodName)) {
+                    Response::json(500, ["message" => "Method {$methodName} not found in {$controllerName}"]);
+                }
+
+                // Call the method and pass regex matches (like $id) as arguments
+                call_user_func_array([$controller, $methodName], $matches);
+                return;
+            }
         }
 
-        $route = $this->routes[$httpMethod][$path];
-
-        // Run auth middleware for protected routes
-        if ($route['protected']) {
-            $GLOBALS['user'] = AuthMiddleware::handle();
-        }
-
-        $controllerName = $route['controller'];
-        $methodName     = $route['method'];
-
-        if (!class_exists($controllerName)) {
-            Response::json(
-                ['status' => false, 'message' => "Controller {$controllerName} not found"],
-                500
-            );
-        }
-
-        $controller = new $controllerName();
-
-        if (!method_exists($controller, $methodName)) {
-            Response::json(
-                ['status' => false, 'message' => "Method {$methodName} not found"],
-                500
-            );
-        }
-
-        // Special case: GET /api/patients?id=1
-        if (
-            $httpMethod === 'GET'
-            && $path === '/api/patients'
-            && isset($_GET['id'])
-        ) {
-            $controller->show();
-            return;
-        }
-
-        // Default controller execution
-        $controller->{$methodName}();
+        // 5. 404 - NOTHING MATCHED
+        Response::json(404, [
+            "status"     => false,
+            "message"    => "Route not found",
+            "debug_info" => [
+                "method"      => $requestMethod,
+                "original_uri"=> $requestUri,
+                "cleaned_uri" => $uri
+            ]
+        ]);
     }
 }
